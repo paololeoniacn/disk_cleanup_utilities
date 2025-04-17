@@ -1,64 +1,85 @@
 # ===============================
-# Script Pulizia Windows - bpaoleon
+# Script Pulizia Windows - versione stabile
 # ===============================
 
-# Controlla se è in esecuzione come amministratore
+# 1. Controllo privilegi amministratore
 $adminCheck = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $adminCheck) {
-    Write-Warning "⚠️ Devi eseguire questo script come AMMINISTRATORE!"
-    Write-Host "➡️ Per farlo, clicca con il tasto destro su PowerShell e scegli 'Esegui come amministratore'."
-    Write-Host "❌ Chiusura script..."
+    Write-Warning "Devi eseguire questo script come AMMINISTRATORE!"
+    Write-Host "Tasto destro su PowerShell > 'Esegui come amministratore'."
     Start-Sleep -Seconds 5
     exit
 }
 
-# Percorso del file di log
-$logPath = "$env:USERPROFILE\Desktop\cleanup_Log.txt"
+# 2. Log su Desktop
+$logPath = "$env:USERPROFILE\Desktop\Pulizia_Log.txt"
 Start-Transcript -Path $logPath -Append
 
-function Delete-FilesInFolder($path) {
+# 3. Funzione per eliminare i contenuti di una cartella
+function Delete-FilesInFolder {
+    param (
+        [string]$path
+    )
+    
     if (Test-Path $path) {
-        Write-Output "Pulizia in corso: $path"
+        Write-Output "`nPulizia di: $path"
         try {
-            Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-            Write-Output "✔️ Pulito: $path"
+            Get-ChildItem -Path $path -Force -Recurse -ErrorAction SilentlyContinue |
+                Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+            Write-Output "OK - Pulito: $path"
         } catch {
-            Write-Output "❌ Errore durante la pulizia: $path - $_"
+            Write-Output "X - Errore nella pulizia di: $path - $_"
         }
     } else {
-        Write-Output "❌ Percorso non trovato: $path"
+        Write-Output "A - Percorso non trovato: $path"
     }
 }
 
-# 1. Pulisci cartelle
-Delete-FilesInFolder "$env:TEMP"
-Delete-FilesInFolder "C:\Windows\Prefetch"
-Delete-FilesInFolder "C:\Windows\SoftwareDistribution"
-Delete-FilesInFolder "C:\Windows\SysWOW64\CCM\Cache"
-Delete-FilesInFolder "C:\Windows\CCMCache"
-
-# 2. Svuota il Cestino
-try {
-    Write-Output "Svuotamento del Cestino..."
-    (New-Object -ComObject Shell.Application).NameSpace(0xA).Items() | ForEach-Object { Remove-Item $_.Path -Recurse -Force -ErrorAction SilentlyContinue }
-    Write-Output "✔️ Cestino svuotato."
-} catch {
-    Write-Output "❌ Errore nello svuotamento del Cestino: $_"
+function Get-DiskFreeSpace {
+    $drive = Get-PSDrive C
+    return "{0:N2} GB disponibili su C:" -f ($drive.Free / 1GB)
 }
 
-# 3. Avvia Disk Cleanup
+Write-Output "`nSpazio su disco PRIMA della pulizia:"
+Write-Output (Get-DiskFreeSpace)
+$startTime = Get-Date
+
+
+# 4. Esecuzione pulizie
+$cartelleDaPulire = @(
+    "$env:TEMP",
+    "C:\Windows\Prefetch",
+    "C:\Windows\SoftwareDistribution",
+    "C:\Windows\SysWOW64\CCM\Cache",
+    "C:\Windows\CCMCache"
+)
+
+foreach ($cartella in $cartelleDaPulire) {
+    Delete-FilesInFolder -path $cartella
+}
+
+# 5. Svuota il cestino
+try {
+    Write-Output "`nSvuotamento del Cestino..."
+    (New-Object -ComObject Shell.Application).NameSpace(0xA).Items() |
+        ForEach-Object { Remove-Item $_.Path -Force -Recurse -ErrorAction SilentlyContinue }
+    Write-Output "OK - Cestino svuotato."
+} catch {
+    Write-Output "X - Errore svuotando il Cestino: $_"
+}
+
+# 6. Pulizia disco
 Write-Output "Avvio Pulizia Disco..."
-Start-Process cleanmgr.exe
+Start-Process cleanmgr.exe -Wait
 
-# 4. Avvia Windows Update - Check for updates
-# Write-Output "Avvio ricerca aggiornamenti Windows..."
-# Start-Process "ms-settings:windowsupdate"
+$endTime = Get-Date
+Write-Output "`nSpazio su disco DOPO la pulizia:"
+Write-Output (Get-DiskFreeSpace)
 
-# 5. Esegui SFC /scannow
-Write-Output "Esecuzione di 'sfc /scannow'..."
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c sfc /scannow" -Verb RunAs
+$duration = $endTime - $startTime
+Write-Output "Durata dello script: $($duration.ToString())"
 
-# Fine script
-Stop-Transcript
-Write-Output "`n✅ Pulizia completata. Log salvato su Desktop."
+Write-Output "---`n`nOra non resta che ricercare Aggiornamenti Windows..."
+
+Read-Host "`npremi un tasto per uscire"
